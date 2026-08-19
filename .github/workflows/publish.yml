@@ -1,0 +1,168 @@
+# Canonical copy of the PUBLIC mirror repo's workflow (appfigures/agent-toolkit
+# → .github/workflows/publish.yml). It does NOT run in this monorepo — it lives
+# here only so the one-time mirror seed is a copy-paste and never lost to a
+# cleared /tmp. Adapted from appfigures/cli's publish.yml per publishing.md:
+# toolkit release title, the real EXPECTED_PACKED_FILES set + CHUNK_PATTERN
+# (verify-build.ts is the source of truth), and the MCP-registry steps dropped
+# (the toolkit is not an MCP server). Keep this in sync with
+# scripts/verify-build.ts EXPECTED_PACKED_FILES / CHUNK_PATTERN.
+name: publish
+
+on:
+  push:
+    tags: ['v*']
+
+permissions:
+  id-token: write # npm Trusted Publishing OIDC
+  contents: write # GitHub Release creation
+
+concurrency:
+  group: publish
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: '22.14.0'
+          registry-url: https://registry.npmjs.org
+
+      - name: Use npm with Trusted Publishing support
+        # Pinned exact (>=11.5.1 required for Trusted Publishing); bump deliberately.
+        run: npm install -g npm@11.16.0
+
+      - name: Verify tag matches package.json version
+        run: |
+          set -eo pipefail
+          TAG_VERSION="${GITHUB_REF_NAME#v}"
+          PKG_VERSION="$(node -p 'require("./package.json").version')"
+          if [ "$TAG_VERSION" != "$PKG_VERSION" ]; then
+            echo "::error::Tag v${TAG_VERSION} does not match package.json version ${PKG_VERSION}"
+            exit 1
+          fi
+
+      - name: Verify publishable file set
+        run: |
+          set -eo pipefail
+          PACK_JSON="$(npm pack --dry-run --json)"
+          PACK_JSON="${PACK_JSON}" node <<'NODE'
+          const data = JSON.parse(process.env.PACK_JSON)
+          const files = data[0].files.map((file) => file.path).sort()
+
+          // Fixed set — mirrors EXPECTED_PACKED_FILES in scripts/verify-build.ts.
+          const expected = [
+          	'CHANGELOG.md',
+          	'LICENSE',
+          	'README.md',
+          	'dist/ai.d.ts',
+          	'dist/ai.js',
+          	'dist/client.d.ts',
+          	'dist/index.d.ts',
+          	'dist/index.js',
+          	'dist/langchain.d.ts',
+          	'dist/langchain.js',
+          	'dist/openai.d.ts',
+          	'dist/openai.js',
+          	'docs/api-reference.md',
+          	'docs/catalog_playbook.md',
+          	'docs/client-api.md',
+          	'docs/glossary.md',
+          	'docs/numeric_metrics.md',
+          	'docs/recipes.md',
+          	'docs/tools-api.md',
+          	'examples/client/app-stats.ts',
+          	'examples/client/audience-overlap.ts',
+          	'examples/client/competitor-report.ts',
+          	'examples/client/keyword-competition.ts',
+          	'examples/client/review-triage.ts',
+          	'examples/tools/ai-sdk-tools.ts',
+          	'examples/tools/langchain-tools.ts',
+          	'examples/tools/openai-tools.ts',
+          	'llms.txt',
+          	'package.json',
+          ]
+
+          // tsdown code-splits shared code into content-hashed chunks whose names change
+          // with the module graph, so they can't be pinned. Mirrors CHUNK_PATTERN.
+          const CHUNK_PATTERN = /^dist\/[\w.-]+-[\w-]{8}\.(js|d\.ts)$/
+
+          const missing = expected.filter((file) => !files.includes(file))
+          const unexpected = files.filter((file) => !expected.includes(file) && !CHUNK_PATTERN.test(file))
+
+          if (missing.length || unexpected.length) {
+          	console.error(`Publishable file set mismatch.\n  missing: ${JSON.stringify(missing)}\n  unexpected: ${JSON.stringify(unexpected)}\n  got: ${JSON.stringify(files)}`)
+          	process.exit(1)
+          }
+          NODE
+
+      - name: Extract release notes
+        run: |
+          set -eo pipefail
+          node - "${GITHUB_REF_NAME#v}" > release-notes.md <<'NODE'
+          const fs = require('fs')
+
+          const version = process.argv[2]
+          const content = fs.readFileSync('CHANGELOG.md', 'utf8')
+          const escaped = version.replace(/[.+*?^$(){}|[\]\\]/g, '\\$&')
+          const headerRe = new RegExp(`^## \\[${escaped}\\]`)
+          const nextHeaderRe = /^## \[/
+          const captured = []
+          let inSection = false
+
+          for (const line of content.split('\n')) {
+          	if (inSection && nextHeaderRe.test(line)) break
+          	if (headerRe.test(line)) {
+          		inSection = true
+          		continue
+          	}
+          	if (inSection) captured.push(line)
+          }
+
+          if (!inSection) {
+          	console.error(`No CHANGELOG section found for version ${version}`)
+          	process.exit(1)
+          }
+
+          process.stdout.write(captured.join('\n').trim() + '\n')
+          NODE
+
+      - name: Publish to npm
+        run: |
+          set -eo pipefail
+          NAME="$(node -p 'require("./package.json").name')"
+          VERSION="$(node -p 'require("./package.json").version')"
+          TAG="$(node -e 'const version = process.argv[1]; const match = version.match(/^\d+\.\d+\.\d+-([0-9A-Za-z]+)/); if (match) process.stdout.write(match[1]);' "${VERSION}")"
+
+          if npm view "${NAME}@${VERSION}" version >/dev/null 2>&1; then
+            echo "${NAME}@${VERSION} is already published; skipping npm publish"
+            exit 0
+          fi
+
+          if [ -n "$TAG" ]; then
+            npm publish --tag "$TAG"
+          else
+            npm publish
+          fi
+
+      # Create the GitHub Release after npm. npm publish is irreversible and the release is the
+      # user-facing record of it; a rerun skips both already-done steps (npm self-skips, release
+      # self-skips).
+      - name: Create GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -eo pipefail
+          if gh release view "${GITHUB_REF_NAME}" >/dev/null 2>&1; then
+            echo "Release ${GITHUB_REF_NAME} already exists; skipping"
+            exit 0
+          fi
+
+          VERSION="${GITHUB_REF_NAME#v}"
+          gh release create "${GITHUB_REF_NAME}" \
+            --title "@appfigures/agent-toolkit v${VERSION}" \
+            --notes-file release-notes.md
