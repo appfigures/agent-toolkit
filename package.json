@@ -1,0 +1,88 @@
+{
+  "name": "@appfigures/agent-toolkit",
+  "version": "1.0.0",
+  "description": "Give your AI agents a read on the app market — download and revenue estimates, reviews, ranks, keywords, ads, and audience for any app on any major store. Agent tools for the Vercel AI SDK, OpenAI, and LangChain, plus a typed SDK client.",
+  "type": "module",
+  "sideEffects": false,
+  "license": "Apache-2.0",
+  "author": "Appfigures",
+  "keywords": [
+    "appfigures",
+    "ai",
+    "agent",
+    "tools",
+    "ai-sdk",
+    "app-intelligence",
+    "app-store",
+    "aso",
+    "analytics",
+    "reviews",
+    "ratings",
+    "estimates",
+    "mobile",
+    "ios",
+    "android"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/appfigures/agent-toolkit.git"
+  },
+  "homepage": "https://github.com/appfigures/agent-toolkit#readme",
+  "bugs": {
+    "url": "https://github.com/appfigures/agent-toolkit/issues"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    },
+    "./ai": {
+      "types": "./dist/ai.d.ts",
+      "default": "./dist/ai.js"
+    },
+    "./openai": {
+      "types": "./dist/openai.d.ts",
+      "default": "./dist/openai.js"
+    },
+    "./langchain": {
+      "types": "./dist/langchain.d.ts",
+      "default": "./dist/langchain.js"
+    }
+  },
+  "files": [
+    "dist",
+    "docs",
+    "examples",
+    "llms.txt",
+    "README.md",
+    "CHANGELOG.md",
+    "LICENSE"
+  ],
+  "dependencies": {
+    "fuzzysort": "^3.1.0",
+    "temporal-polyfill": "^1.0.3",
+    "zod": "4.4.3"
+  },
+  "peerDependencies": {
+    "@langchain/core": "^1",
+    "ai": "^7",
+    "openai": "^7"
+  },
+  "peerDependenciesMeta": {
+    "@langchain/core": {
+      "optional": true
+    },
+    "ai": {
+      "optional": true
+    },
+    "openai": {
+      "optional": true
+    }
+  }
+}

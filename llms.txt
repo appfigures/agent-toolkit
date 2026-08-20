@@ -1,0 +1,19 @@
+# @appfigures/agent-toolkit
+
+> App-store intelligence for AI agents — download and revenue estimates, reviews, ranks,
+> keywords, ads, and audience for any app on any major store. Ships as tools (Vercel AI SDK,
+> OpenAI, LangChain) and a typed SDK client.
+
+## Docs
+
+- [README](./README.md): install, the four surfaces, per-framework wiring, the write gate, configuration
+- [API reference](./docs/api-reference.md): every action with parameters, types, and examples
+- [Client API](./docs/client-api.md): the typed `AppfiguresAgentClient`, for when your agent writes code — calling actions, returned data, errors, hints, authentication
+- [Tools API](./docs/tools-api.md): the action surface and framework adapters, for when your agent calls tools in a framework — the write gate, results, scoping, per-request auth
+- [Recipes](./docs/recipes.md): real multi-step flows (competitor teardown, ASO research, review triage)
+
+## Reference
+
+- [Catalog playbook](./docs/catalog_playbook.md): the `explorer` query grammar and field list
+- [Numeric metrics](./docs/numeric_metrics.md): the datasets `metrics.query` accepts
+- [Glossary](./docs/glossary.md): domain terms
