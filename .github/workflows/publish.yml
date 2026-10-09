@@ -68,6 +68,8 @@ jobs:
           	'dist/langchain.js',
           	'dist/openai.d.ts',
           	'dist/openai.js',
+          	'dist/static-descriptors.d.ts',
+          	'dist/static-descriptors.js',
           	'docs/api-reference.md',
           	'docs/catalog_playbook.md',
           	'docs/client-api.md',
