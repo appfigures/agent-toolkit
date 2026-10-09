@@ -49,7 +49,7 @@ createAppfiguresActions({
 
 Without it, a write returns `{ error: { causeType: 'refusal' } }` and does nothing.
 
-Each adapter also returns a `mutations` map — `{ reviews_reply: 'create' }` — so you can drive an approval step at the call site:
+Each adapter also returns a `mutations` map — `{ reviews_reply: 'destructive' }` — so you can drive an approval step at the call site:
 
 ```ts
 const { tools, mutations } = toAISDKTools(createAppfiguresActions())

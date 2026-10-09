@@ -48,3 +48,4 @@ Active subscriptions over time, grouped by date and product:
 - **App availability.** Available only for apps you own or that were shared with you: `sales.*`, `revenue.*`, `subscriptions.*`, `usage.*`, `ads.*`, `adspend.*`. Available for any app, subject to your plan features: `estimates.*`, `ratings.*`, `reviews.*`.
 - **`granularity` defaults to daily when grouping by date.** Pass `granularity` explicitly (`weekly`, `monthly`, `quarterly`, `yearly`) to change the bucket size.
 - **Data lags 1-2 days.** Some datasets lag 1 day; `estimates.*` lags 2 days on Google Play. A query whose `end` resolves to today (including the default 30-day range) will return an incomplete or missing final datapoint — pass an earlier `end` for a fully settled series.
+- **Missing estimates are `null`.** `estimates.*` returns `null` when there's no estimate, and breakdowns leave those apps out.

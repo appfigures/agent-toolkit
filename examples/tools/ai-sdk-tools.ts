@@ -3,7 +3,7 @@
 // #region readme
 import { createAppfiguresActions } from '@appfigures/agent-toolkit'
 import { toAISDKTools } from '@appfigures/agent-toolkit/ai'
-import { generateText, stepCountIs, type LanguageModel } from 'ai'
+import { generateText, type LanguageModel, stepCountIs } from 'ai'
 
 // `model` is your provider's model, e.g. `openai('gpt-4o')` from `@ai-sdk/openai`.
 export async function run(model: LanguageModel) {

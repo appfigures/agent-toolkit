@@ -318,7 +318,7 @@ Units:
 
 - `custom_meta.revenue_estimates_*`: integer dollars, net of platform fees. `$100k` is `100000`.
 - `custom_meta.download_estimates_*`: integer downloads.
-- `us_price` and app price currency fields: `/1000` units. Divide by 1000 for dollars.
+- `us_price` and `prices[].price`: `/1000` units of their currency (`us_price` is USD; each `prices` row has its own `currency`). Divide by 1000.
 - `all_rating` and `version_rating`: 0-50, stars times 10. Divide by 10 for stars.
 - `all_rating_count` and `version_rating_count`: rating counts, not averages.
 

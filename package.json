@@ -1,6 +1,6 @@
 {
   "name": "@appfigures/agent-toolkit",
-  "version": "1.0.0",
+  "version": "2.0.0",
   "description": "Give your AI agents a read on the app market — download and revenue estimates, reviews, ranks, keywords, ads, and audience for any app on any major store. Agent tools for the Vercel AI SDK, OpenAI, and LangChain, plus a typed SDK client.",
   "type": "module",
   "sideEffects": false,
@@ -53,6 +53,10 @@
     "./langchain": {
       "types": "./dist/langchain.d.ts",
       "default": "./dist/langchain.js"
+    },
+    "./static-descriptors": {
+      "types": "./dist/static-descriptors.d.ts",
+      "default": "./dist/static-descriptors.js"
     }
   },
   "files": [

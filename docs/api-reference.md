@@ -30,6 +30,30 @@ await af.apps.search({ q: "electronic arts", count: 25, page: 2 })
 await af.apps.search({ q: "minecraft", allStores: true })
 ```
 
+<a id="af-apps-get"></a>
+
+## af.apps.get
+
+Get an app's record: basic metadata (name, developer, etc) and, if the user tracks it, what data they can access. Pass a product ID for one storefront; unified app ID for all storefronts together.
+
+> [!NOTE]
+> The app's full store listing (description, screenshots, etc.) is available through [`af.store.appListing`](#af-store-appListing).
+
+**Parameters**
+
+- `appId` required `number | string` — The app's unified app ID or product ID.
+- `allStores` `boolean`, default `false` — For a unified app ID: include member products across all storefronts (Amazon, Steam, Windows, Roku, etc.). When false, `member_products` is restricted to storefronts with app-intelligence coverage (iOS + Google Play). Ignored for product IDs.
+
+**Examples**
+
+```ts
+// Get Minecraft's unified-app record (iOS + Google Play by default).
+await af.apps.get({ appId: "ua_X7iNgb" })
+
+// Get Minecraft's Google Play product record.
+await af.apps.get({ appId: 6938219 })
+```
+
 <a id="af-apps-tracked"></a>
 
 ## af.apps.tracked
@@ -68,28 +92,33 @@ await af.apps.tracked({ filterAppsBySource: ["manual"] })
 await af.apps.tracked({ filterAppsByType: ["inapp","subscription"] })
 ```
 
-<a id="af-apps-get"></a>
+<a id="af-apps-breakdown"></a>
 
-## af.apps.get
+## af.apps.breakdown
 
-Get an app's record: basic metadata (name, developer, etc) and, if the user tracks it, what data they can access. Pass a product ID for one storefront; unified app ID for all storefronts together.
+Count your tracked apps by data group (e.g. sales, usage, ranks, reviews, keywords), storefront, monetization model, and source (yours vs tracked competitors), plus the total and earliest release date.
 
 > [!NOTE]
-> The app's full store listing (description, screenshots, etc.) is available through [`af.store.appListing`](#af-store-appListing).
+> For the figures behind a data group use [`af.metrics.query`](#af-metrics-query); to list the apps use [`af.apps.tracked`](#af-apps-tracked).
 
 **Parameters**
 
-- `appId` required `number | string` — The app's unified app ID or product ID.
-- `allStores` `boolean`, default `false` — For a unified app ID: include member products across all storefronts (Amazon, Steam, Windows, Roku, etc.). When false, `member_products` is restricted to storefronts with app-intelligence coverage (iOS + Google Play). Ignored for product IDs.
+- `filterAppsById` `(number | string)[]` — Only include data about specific apps, by product ID or unified app ID. Takes precedence over the other `filterAppsBy*` keys when set. Storefront, source, or type filters are better for app sets that can be described by those criteria.
+- `filterAppsByStorefront` `string[]` — Narrow the account's tracked apps to those on these storefronts (e.g. apple:ios, google_play).
+- `filterAppsBySource` `("own" | "shared" | "manual")[]` — Narrow the account's tracked apps by tracking relationship.
+- `filterAppsByType` `("app" | "bundle" | "inapp" | "subscription")[]` — Narrow the account's tracked apps to products of these types.
 
 **Examples**
 
 ```ts
-// Get Minecraft's unified-app record (iOS + Google Play by default).
-await af.apps.get({ appId: "ua_X7iNgb" })
+// Check what data the whole account has.
+await af.apps.breakdown()
 
-// Get Minecraft's Google Play product record.
-await af.apps.get({ appId: 6938219 })
+// Limit to apps you own or that were shared with you.
+await af.apps.breakdown({ filterAppsBySource: ["own","shared"] })
+
+// Limit to your iOS apps.
+await af.apps.breakdown({ filterAppsByStorefront: ["apple:ios"] })
 ```
 
 <a id="af-explorer-listProducts"></a>
@@ -103,7 +132,7 @@ Read catalog fields for one app or many. Fields referenced by `query` or `sort` 
 
 **Parameters**
 
-- `query` `unknown[]`, default `[]` — Explorer query in JSON array format to select matching catalog Products. Missing values and `[]` match every Product across every storefront. The full field list and query syntax are documented in `docs/catalog_playbook.md`.
+- `query` `unknown[]`, default `[]` — Explorer query in JSON array format to select matching catalog Products. Defaults to active Products. Include inactive too: ["match","active",["or",true,false]]. The full field list and query syntax are documented in `docs/catalog_playbook.md`.
 - `extraFields` `string[]` — Additional fields to include beyond those your `query` or `sort` already reference. Find field paths (and which you can read) with [`af.explorer.describeFields`](#af-explorer-describeFields).
 - `sort` `string` — Explorer field name. The full field list is documented in `docs/catalog_playbook.md`.
 - `order` `"asc" | "desc"`, default `"desc"` — Sort direction.
@@ -141,7 +170,7 @@ Aggregate across the full catalog of millions of products across Apple, Google P
 
 **Parameters**
 
-- `query` `unknown[]`, default `[]` — Explorer query in JSON array format to select matching catalog Products. Missing values and `[]` match every Product across every storefront. The full field list and query syntax are documented in `docs/catalog_playbook.md`.
+- `query` `unknown[]`, default `[]` — Explorer query in JSON array format to select matching catalog Products. Defaults to active Products. Include inactive too: ["match","active",["or",true,false]]. The full field list and query syntax are documented in `docs/catalog_playbook.md`.
 - `fields` required `string[]` — Field+aggregation pairs (e.g. `all_rating/stats`, `storefronts/terms`). Aggregations: `stats`, `terms`, `histogram`, `date_histogram`, `cardinality`. The full field list is documented in `docs/catalog_playbook.md`.
 - `allowUnscopedNested` `boolean`, default `false` — Escape hatch for intentionally broad queries. Bypasses the default block on unscoped nested predicates that usually inflate results.
 - `termsCount` `number`, default `20` — Maximum buckets returned for each `terms` aggregation. Other aggregation types ignore it.
@@ -296,7 +325,7 @@ Trace rank history for one or more apps across countries, device types, category
 - `countries` `string[]` — Country codes to query. Defaults to every country with rank coverage.
 - `granularity` `"daily" | "hourly"`, default `"hourly"` — Sampling rate. Hourly gives the freshest data; pass `granularity: "daily"` for compact multi-day history.
 - `deviceTypes` `("watch" | "handheld" | "tablet" | "tv" | "desktop" | "headset")[]`, default `["handheld"]` — Which device types to include; each ranks in its own chart. Add more to widen the response.
-- `subtypes` `("free" | "paid" | "topgrossing")[]`, default `["free"]` — Which category subtypes to include; each ranks in its own chart. Add more to widen the response.
+- `subtypes` `("free" | "paid" | "topgrossing")[]`, default `["free","paid"]` — Which category subtypes to include; each ranks in its own chart. Add more to widen the response.
 - `categoryIds` `number[]` — Filter response rows to specific category IDs; omit for all. Category IDs come from [`af.store.categories`](#af-store-categories).
 - `start` `string` — Start date (YYYY-MM-DD)
 - `end` `string` — End date (YYYY-MM-DD, defaults to today)
@@ -449,7 +478,7 @@ await af.store.featured({ appId: "ua_X7iNgb", count: 0 })
 
 ## af.store.appListing
 
-Read the full store listing for one storefront: localized text (name, subtitle, description, release notes) plus screenshots, video, categories, monetization, supported devices, country availability, price, file size, and age rating. Takes a numeric product ID (one storefront at a time; a unified app has one product per storefront). One locale per request.
+Read the full store listing for one storefront: localized text (name, subtitle, description, release notes) plus screenshots, video, categories, monetization, supported devices, country availability, price, ratings, file size, and age rating. Takes a numeric product ID (one storefront at a time; a unified app has one product per storefront). One locale per request.
 
 > [!NOTE]
 > Everything visible on one app's store page, resolved to one locale. The response includes `sibling_products` (product IDs for the same app on other storefronts); one request covers one listing. Filtering or searching listings across the catalog (e.g. "apps whose description mentions X") lives in [`af.explorer.listProducts`](#af-explorer-listProducts). Identity/publisher/member-products data lives in [`af.apps.get`](#af-apps-get).
@@ -525,10 +554,10 @@ await af.audience.crossUsage({ appId: 336744124021 })
 
 ## af.reviews.list
 
-Read individual reviews for one or more apps. Returns review text, star rating, country, and app version. Filterable by star rating, date range, country, version, and tracking relationship.
+Read individual reviews for one or more apps. Returns review text, star rating, country, app version, and your response. Filterable by star rating, date range, country, version, response status, and tracking relationship.
 
 > [!NOTE]
-> Reviews are public, so this works for any app (with the right plan), not just those the account tracks; with no app filter, results cover every tracked app. For volume counts by dimension, see [`af.reviews.breakdown`](#af-reviews-breakdown). To respond to a review, use [`af.reviews.reply`](#af-reviews-reply) (write access requires owning the app).
+> Reviews are public, so this works for any app (with the right plan), not just those the account tracks; with no app filter, results cover every tracked app. For volume counts by dimension, see [`af.reviews.breakdown`](#af-reviews-breakdown). To respond to a review, use [`af.reviews.reply`](#af-reviews-reply) (write access requires owning the app). `response` can include responses the store hasn't published yet.
 
 **Parameters**
 
@@ -536,6 +565,7 @@ Read individual reviews for one or more apps. Returns review text, star rating, 
 - `versions` `string[]` — Filter by app version. Pass multiple to combine.
 - `countries` `string[]` — Filter to one or more ISO country codes (e.g. US, JP, GB).
 - `q` `string` — Search review title and body. Pass multiple keywords to match any. Case-insensitive; combines with other filters.
+- `responseStatus` `"with_response" | "without_response"` — Filter by whether you have responded. Omit to include all reviews.
 - `sort` `"date" | "stars"` — Sort by review date or star rating.
 - `order` `"asc" | "desc"`, default `"desc"` — Sort direction.
 - `filterAppsById` `(number | string)[]` — Only include data about specific apps, by product ID or unified app ID. Takes precedence over the other `filterAppsBy*` keys when set. Storefront, source, or type filters are better for app sets that can be described by those criteria.
@@ -564,6 +594,9 @@ await af.reviews.list({ filterAppsById: ["ua_X7iNgb"], start: "2025-12-01", end:
 
 // Page through long results across your own apps.
 await af.reviews.list({ filterAppsBySource: ["own"], count: 50, page: 2 })
+
+// Find your 1-2 star reviews without a response.
+await af.reviews.list({ filterAppsBySource: ["own"], stars: [1,2], responseStatus: "without_response" })
 ```
 
 <a id="af-reviews-breakdown"></a>
@@ -581,6 +614,7 @@ Aggregate review counts for one or more apps, bucketed by dimension. Returns one
 - `versions` `string[]` — Filter by app version. Pass multiple to combine.
 - `countries` `string[]` — Filter to one or more ISO country codes (e.g. US, JP, GB).
 - `q` `string` — Search review title and body. Pass multiple keywords to match any. Case-insensitive; combines with other filters.
+- `responseStatus` `"with_response" | "without_response"` — Filter by whether you have responded. Omit to include all reviews.
 - `filterAppsById` `(number | string)[]` — Only include data about specific apps, by product ID or unified app ID. Takes precedence over the other `filterAppsBy*` keys when set. Storefront, source, or type filters are better for app sets that can be described by those criteria.
 - `filterAppsByStorefront` `string[]` — Narrow the account's tracked apps to those on these storefronts (e.g. apple:ios, google_play).
 - `filterAppsBySource` `("own" | "shared" | "manual")[]` — Narrow the account's tracked apps by tracking relationship.
@@ -614,12 +648,12 @@ await af.reviews.breakdown({ filterAppsBySource: ["own"] })
 ## af.reviews.reply
 
 > [!WARNING]
-> Mutation (create) — refuses without `confirmMutation`.
+> Mutation (destructive) — refuses without `confirmMutation`.
 
-Post or withdraw a developer response on a specific review. Pass `content` to post; pass `delete: true` to withdraw a previously-posted response. Returns the resulting state (`published`/`pending` for a post, `removed`/`removal_pending` for a withdrawal) along with the submitting account.
+Post or withdraw a developer response on a specific review. Pass `content` to post; pass `delete: true` to withdraw a previously-posted response.
 
 > [!NOTE]
-> Write access only: the account must own the app the review is on. Review IDs come from [`af.reviews.list`](#af-reviews-list); pass the row's `review_id`. Stores may queue the action (`pending` / `removal_pending`); re-fetch with [`af.reviews.list`](#af-reviews-list) later to confirm.
+> Write access only: the account must own the app the review is on. Review IDs come from [`af.reviews.list`](#af-reviews-list); pass the row's `review_id`. The store may take time to show a response publicly. Posted responses appear as `response` in [`af.reviews.list`](#af-reviews-list).
 
 **Parameters**
 
@@ -1120,7 +1154,7 @@ await af.appleAds.keywords({ campaignId: "aac_W9YthU", sort: "spend" })
 List the actual user search terms that triggered a campaign's ads, each with its all-time performance (impressions, taps, installs, spend, cost-per-install). Use these to discover new keywords to bid on or exclude.
 
 > [!NOTE]
-> Get campaign IDs from [`af.appleAds.campaigns`](#af-appleAds-campaigns). Bid on a promising term with `af.appleAds.addKeywords`.
+> Get campaign IDs from [`af.appleAds.campaigns`](#af-appleAds-campaigns).
 
 **Parameters**
 

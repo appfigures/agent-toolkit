@@ -17,6 +17,15 @@ Ask it things like:
 
 Setting it up with a coding agent? Point it at [`llms.txt`](./llms.txt): the doc map for wiring this into your agent.
 
+## ✨ Four ways to use the power of Appfigures AI
+
+Bring Appfigures into your agent however it's built — as tools it calls, code it writes, a CLI, or over MCP. Whichever you pick, you can do the same things and get the same JSON back.
+
+- 🛠️ **Agent tools** — your agent calls Appfigures as tools while it runs. AI SDK, OpenAI, LangChain. → [Add the tools](#tools-for-your-agent-framework)
+- 📦 **The client** — your agent writes code that queries Appfigures and gets typed data back. → [Use the client](#the-client-for-code-your-agent-writes)
+- 🖥️ **CLI** — run Appfigures from a terminal or a sandbox. → [`@appfigures/cli`](https://www.npmjs.com/package/@appfigures/cli)
+- 🔌 **MCP** — connect Appfigures to Claude, ChatGPT, or Cursor. → [Connect the hosted server](https://github.com/appfigures/cli#mcp-server)
+
 ## Quickstart
 
 ```sh
@@ -34,15 +43,6 @@ console.log(results[0]) // name, downloads_last_month, revenue_last_month_usd, s
 Get an API key at https://appfigures.com/developers/keys, then set it as `APPFIGURES_API_KEY` (or pass `apiKey` in code).
 
 **What a key can see.** Estimates, ratings, reviews, ranks, keywords, and catalog data work for any app on any store, your own or a competitor's. Store-reported numbers for your own apps (actual sales, revenue, subscriptions, and ad spend) require linking that app's store account to Appfigures, or being granted access to it.
-
-## Four ways to use it
-
-Bring Appfigures into your agent however it's built — as tools it calls, code it writes, a CLI, or over MCP. The actions and their JSON-serializable shape are identical across all four.
-
-- **Agent tools** — your agent calls Appfigures actions as tools while it runs. AI SDK, OpenAI, LangChain. → [Add the tools](#tools-for-your-agent-framework)
-- **The client** — your agent writes code that queries Appfigures and gets typed data back. → [Use the client](#the-client-for-code-your-agent-writes)
-- **CLI** — run Appfigures from a terminal or a sandbox. → [`@appfigures/cli`](https://www.npmjs.com/package/@appfigures/cli)
-- **MCP** — connect Appfigures to Claude Desktop or Cursor. → [`npx @appfigures/cli mcp`](https://www.npmjs.com/package/@appfigures/cli)
 
 ## What your agent can do
 
@@ -71,7 +71,7 @@ Install your framework's SDK next to the toolkit: `ai` and a model provider such
 ```ts
 import { createAppfiguresActions } from '@appfigures/agent-toolkit'
 import { toAISDKTools } from '@appfigures/agent-toolkit/ai'
-import { generateText, stepCountIs, type LanguageModel } from 'ai'
+import { generateText, type LanguageModel, stepCountIs } from 'ai'
 
 // `model` is your provider's model, e.g. `openai('gpt-4o')` from `@ai-sdk/openai`.
 export async function run(model: LanguageModel) {
@@ -195,8 +195,9 @@ Full parameters and examples for each action are in [`docs/api-reference.md`](./
 ### apps
 
 - [**`af.apps.search`**](./docs/api-reference.md#af-apps-search) — Find apps by name or publisher.
-- [**`af.apps.tracked`**](./docs/api-reference.md#af-apps-tracked) — List the apps your Appfigures account tracks.
 - [**`af.apps.get`**](./docs/api-reference.md#af-apps-get) — Get an app's record: basic metadata (name, developer, etc) and, if the user tracks it, what data they can access.
+- [**`af.apps.tracked`**](./docs/api-reference.md#af-apps-tracked) — List the apps your Appfigures account tracks.
+- [**`af.apps.breakdown`**](./docs/api-reference.md#af-apps-breakdown) — Count your tracked apps by data group (e.g.
 
 ### explorer
 
@@ -215,7 +216,7 @@ Full parameters and examples for each action are in [`docs/api-reference.md`](./
 - [**`af.store.topCharts`**](./docs/api-reference.md#af-store-topCharts) — List the top apps in a category chart for a given country and category, with current positions and day-over-day deltas.
 - [**`af.store.categories`**](./docs/api-reference.md#af-store-categories) — List every store category with its ID.
 - [**`af.store.featured`**](./docs/api-reference.md#af-store-featured) — List featured and editorial placements for an app or storefront product.
-- [**`af.store.appListing`**](./docs/api-reference.md#af-store-appListing) — Read the full store listing for one storefront: localized text (name, subtitle, description, release notes) plus screenshots, video, categories, monetization, supported devices, country availability, price, file size, and age rating.
+- [**`af.store.appListing`**](./docs/api-reference.md#af-store-appListing) — Read the full store listing for one storefront: localized text (name, subtitle, description, release notes) plus screenshots, video, categories, monetization, supported devices, country availability, price, ratings, file size, and age rating.
 
 ### audience
 

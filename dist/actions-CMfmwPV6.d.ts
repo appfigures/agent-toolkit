@@ -1,4 +1,24 @@
 import { z } from "zod";
+//#region .gen/stage/apiClientOptions.d.ts
+/** A literal bearer token, or an async getter resolved per request (for refreshing credentials). */
+type APIKey = string | (() => Promise<string>);
+/**
+ * A fetch implementation — the same shape as the global `fetch`, so the global (and any
+ * `(url, init) => Promise<Response>`) satisfies it. It's `defaultTransport`'s underlying `fetch` and the
+ * shape of an {@link AppfiguresTransport}'s `fetch` method.
+ */
+type FetchLike = (input: string, init?: RequestInit) => Promise<Response>;
+/**
+ * The transport seam the toolkit calls to perform each request — from both the typed client and the tool
+ * adapters. Any object with a matching `fetch` method is an `AppfiguresTransport`, so you can hand it your API
+ * client directly (`transport: myClient`). Build the standard one with `defaultTransport`, or supply your own
+ * to own the URL + auth.
+ */
+interface AppfiguresTransport {
+  /** Perform one request: a path (or absolute URL) + `RequestInit` → `Response`. */
+  fetch(input: string, init?: RequestInit): Promise<Response>;
+}
+//#endregion
 //#region .gen/stage/publicTypes.d.ts
 type AppId = number | string;
 type AppleAdsDisplayStatus = 'running' | 'on_hold' | 'paused' | 'deleted';
@@ -65,6 +85,11 @@ interface Product {
     name: string;
     main: boolean;
   }>;
+  /**
+   * How this product makes money on its store. Absent when the record comes from a source that
+   * doesn't carry it, which doesn't mean the product is free.
+   */
+  monetization_strategies?: MonetizationStrategy[];
   /** Unified app identifier */
   parent_unified_app_id?: string;
   tracking?: Tracking;
@@ -417,8 +442,7 @@ type AppleAdsReportOutput = {
  * performance (impressions, taps, installs, spend, cost-per-install). Use these to discover new
  * keywords to bid on or exclude.
  *
- * Get campaign IDs from af.appleAds.campaigns. Bid on a promising term with
- * af.appleAds.addKeywords.
+ * Get campaign IDs from af.appleAds.campaigns.
  *
  * @example
  * 	Find a campaign, then see the user searches that triggered its ads.
@@ -512,6 +536,58 @@ type AppleAdsTopKeywordsOutput = {
     keyword_term: string | null;
     value: number | null;
   }>;
+};
+/**
+ * Count your tracked apps by data group (e.g. sales, usage, ranks, reviews, keywords), storefront,
+ * monetization model, and source (yours vs tracked competitors), plus the total and earliest
+ * release date.
+ *
+ * For the figures behind a data group use af.metrics.query; to list the apps use af.apps.tracked.
+ *
+ * @example
+ * 	Check what data the whole account has.
+ * 	af.apps.breakdown
+ *
+ * @example
+ * 	Limit to apps you own or that were shared with you.
+ * 	af.apps.breakdown({ filterAppsBySource: ["own","shared"] })
+ *
+ * @example
+ * 	Limit to your iOS apps.
+ * 	af.apps.breakdown({ filterAppsByStorefront: ["apple:ios"] })
+ */
+interface AppsBreakdownInput {
+  /**
+   * Only include data about specific apps, by product ID or unified app ID. Takes precedence over the
+   * other `filterAppsBy*` keys when set. Storefront, source, or type filters are better for app sets
+   * that can be described by those criteria.
+   */
+  filterAppsById?: AppId[];
+  /** Narrow the account's tracked apps to those on these storefronts (e.g. apple:ios, google_play). */
+  filterAppsByStorefront?: string[];
+  /** Narrow the account's tracked apps by tracking relationship. */
+  filterAppsBySource?: TrackingSource[];
+  /** Narrow the account's tracked apps to products of these types. */
+  filterAppsByType?: ProductType[];
+}
+type AppsBreakdownOutput = {
+  /**
+   * Total tracked apps. The by_* maps overlap (an app spans several keys), so they need not sum to
+   * this; absent keys mean zero.
+   */
+  total_apps: number;
+  /** Apps per storefront (app stores, ad networks, and analytics SDKs). */
+  by_storefront: Record<string, number | undefined>;
+  /** Apps per data group. */
+  by_data_group: Record<string, number | undefined>;
+  /** Apps per monetization model. */
+  by_monetization: Record<string, number | undefined>;
+  /** Apps per source: own (your linked-account apps), manual (tracked competitors), shared. */
+  by_source: Record<string, number | undefined>;
+  /** Distinct storefronts per type (app store, ad network, analytics), not app counts. */
+  storefront_types: Record<string, number | undefined>;
+  /** Earliest release date (YYYY-MM-DD), or null when empty. */
+  earliest_release_date: string | null;
 };
 /**
  * Get an app's record: basic metadata (name, developer, etc) and, if the user tracks it, what data
@@ -836,9 +912,9 @@ type DocsGetOutput = unknown;
  */
 interface ExplorerAggregateProductsInput {
   /**
-   * Explorer query in JSON array format to select matching catalog Products. Missing values and `[]`
-   * match every Product across every storefront. The full field list and query syntax are documented
-   * in docs/catalog_playbook.md.
+   * Explorer query in JSON array format to select matching catalog Products. Defaults to active
+   * Products. Include inactive too: ["match","active",["or",true,false]]. The full field list and
+   * query syntax are documented in docs/catalog_playbook.md.
    */
   query?: unknown[];
   /**
@@ -976,9 +1052,9 @@ type ExplorerDescribeFieldsOutput = {
  */
 interface ExplorerListProductsInput {
   /**
-   * Explorer query in JSON array format to select matching catalog Products. Missing values and `[]`
-   * match every Product across every storefront. The full field list and query syntax are documented
-   * in docs/catalog_playbook.md.
+   * Explorer query in JSON array format to select matching catalog Products. Defaults to active
+   * Products. Include inactive too: ["match","active",["or",true,false]]. The full field list and
+   * query syntax are documented in docs/catalog_playbook.md.
    */
   query?: unknown[];
   /**
@@ -1984,6 +2060,8 @@ interface ReviewsBreakdownInput {
    * with other filters.
    */
   q?: string;
+  /** Filter by whether you have responded. Omit to include all reviews. */
+  responseStatus?: 'with_response' | 'without_response';
   /**
    * Only include data about specific apps, by product ID or unified app ID. Takes precedence over the
    * other `filterAppsBy*` keys when set. Storefront, source, or type filters are better for app sets
@@ -2026,13 +2104,14 @@ type ReviewsBreakdownOutput = {
   by_tag?: Record<string, number | undefined>;
 };
 /**
- * Read individual reviews for one or more apps. Returns review text, star rating, country, and app
- * version. Filterable by star rating, date range, country, version, and tracking relationship.
+ * Read individual reviews for one or more apps. Returns review text, star rating, country, app
+ * version, and your response. Filterable by star rating, date range, country, version, response
+ * status, and tracking relationship.
  *
  * Reviews are public, so this works for any app (with the right plan), not just those the account
  * tracks; with no app filter, results cover every tracked app. For volume counts by dimension, see
  * af.reviews.breakdown. To respond to a review, use af.reviews.reply (write access requires owning
- * the app).
+ * the app). `response` can include responses the store hasn't published yet.
  *
  * @example
  * 	Read Minecraft's recent reviews.
@@ -2053,6 +2132,10 @@ type ReviewsBreakdownOutput = {
  * @example
  * 	Page through long results across your own apps.
  * 	af.reviews.list({ filterAppsBySource: ["own"], count: 50, page: 2 })
+ *
+ * @example
+ * 	Find your 1-2 star reviews without a response.
+ * 	af.reviews.list({ filterAppsBySource: ["own"], stars: [1,2], responseStatus: "without_response" })
  */
 interface ReviewsListInput {
   /** Filter by star rating. */
@@ -2066,6 +2149,8 @@ interface ReviewsListInput {
    * with other filters.
    */
   q?: string;
+  /** Filter by whether you have responded. Omit to include all reviews. */
+  responseStatus?: 'with_response' | 'without_response';
   /** Sort by review date or star rating. */
   sort?: 'date' | 'stars';
   order?: SortOrder;
@@ -2123,20 +2208,22 @@ type ReviewsListOutput = {
     body: string;
     deleted: boolean;
     has_response: boolean;
+    response?: {
+      content: string;
+      date: string;
+    };
   }>;
 };
 /**
  * Post or withdraw a developer response on a specific review. Pass `content` to post; pass `delete:
- * true` to withdraw a previously-posted response. Returns the resulting state
- * (`published`/`pending` for a post, `removed`/`removal_pending` for a withdrawal) along with the
- * submitting account.
+ * true` to withdraw a previously-posted response.
  *
  * Write access only: the account must own the app the review is on. Review IDs come from
- * af.reviews.list; pass the row's `review_id`. Stores may queue the action (`pending` /
- * `removal_pending`); re-fetch with af.reviews.list later to confirm.
+ * af.reviews.list; pass the row's `review_id`. The store may take time to show a response publicly.
+ * Posted responses appear as `response` in af.reviews.list.
  *
  * @remarks
- *   Mutation (create) — requires explicit confirmation in tools mode.
+ *   Mutation (destructive) — requires explicit confirmation in tools mode.
  * @example
  * 	Reply to a low-star review after shipping a fix.
  * 	af.reviews.reply({ reviewId: "rev123", content: "We just shipped a fix in v2.1. Let us know if you still see this." })
@@ -2154,91 +2241,7 @@ interface ReviewsReplyInput {
   delete?: boolean;
 }
 type ReviewsReplyOutput = {
-  /** Review ID */
-  review_id: string;
-  submitted_via: {
-    /**
-     * App store platform (e.g. apple:ios, google_play, amazon_appstore, steam, windows10, apple:mac,
-     * apple:tv, apple:imessage, or another supported storefront).
-     */
-    storefront: string;
-    account_type: string;
-    account_name: string;
-  };
-  submitted_by: {
-    name: string;
-  } | null;
-  revision_history: Array<{
-    content: string;
-    timestamp: string;
-  }> | null;
-  content: string;
-  submitted_at: string;
-  state: 'published';
-} | {
-  /** Review ID */
-  review_id: string;
-  submitted_via: {
-    /**
-     * App store platform (e.g. apple:ios, google_play, amazon_appstore, steam, windows10, apple:mac,
-     * apple:tv, apple:imessage, or another supported storefront).
-     */
-    storefront: string;
-    account_type: string;
-    account_name: string;
-  };
-  submitted_by: {
-    name: string;
-  } | null;
-  revision_history: Array<{
-    content: string;
-    timestamp: string;
-  }> | null;
-  content: string;
-  submitted_at: string;
-  state: 'pending';
-} | {
-  /** Review ID */
-  review_id: string;
-  submitted_via: {
-    /**
-     * App store platform (e.g. apple:ios, google_play, amazon_appstore, steam, windows10, apple:mac,
-     * apple:tv, apple:imessage, or another supported storefront).
-     */
-    storefront: string;
-    account_type: string;
-    account_name: string;
-  };
-  submitted_by: {
-    name: string;
-  } | null;
-  revision_history: Array<{
-    content: string;
-    timestamp: string;
-  }> | null;
-  content: string;
-  submitted_at: string;
-  state: 'removal_pending';
-} | {
-  /** Review ID */
-  review_id: string;
-  submitted_via: {
-    /**
-     * App store platform (e.g. apple:ios, google_play, amazon_appstore, steam, windows10, apple:mac,
-     * apple:tv, apple:imessage, or another supported storefront).
-     */
-    storefront: string;
-    account_type: string;
-    account_name: string;
-  };
-  submitted_by: {
-    name: string;
-  } | null;
-  revision_history: Array<{
-    content: string;
-    timestamp: string;
-  }> | null;
-  state: 'removed';
+  accepted: true;
 };
 /**
  * List every known SDK with its id, or search to find a specific one.
@@ -2294,8 +2297,8 @@ type SdksListOutput = {
 /**
  * Read the full store listing for one storefront: localized text (name, subtitle, description,
  * release notes) plus screenshots, video, categories, monetization, supported devices, country
- * availability, price, file size, and age rating. Takes a numeric product ID (one storefront at a
- * time; a unified app has one product per storefront). One locale per request.
+ * availability, price, ratings, file size, and age rating. Takes a numeric product ID (one
+ * storefront at a time; a unified app has one product per storefront). One locale per request.
  *
  * Everything visible on one app's store page, resolved to one locale. The response includes
  * `sibling_products` (product IDs for the same app on other storefronts); one request covers one
@@ -2343,6 +2346,10 @@ type StoreAppListingOutput = {
     id: number;
     name: string;
   };
+  /** All-time average star rating shown on the store page, 0-5. Null when there are no ratings. */
+  rating: number | null;
+  /** All-time number of ratings shown on the store page. Null when the catalog has no rating data. */
+  all_rating_count: number | null;
   price_usd: number | null;
   monetization_strategies: MonetizationStrategy[];
   media: {
@@ -2783,6 +2790,10 @@ interface ActionIO {
     input: AppleAdsTopKeywordsInput;
     output: AppleAdsTopKeywordsOutput;
   };
+  'apps.breakdown': {
+    input: AppsBreakdownInput;
+    output: AppsBreakdownOutput;
+  };
   'apps.get': {
     input: AppsGetInput;
     output: AppsGetOutput;
@@ -2911,26 +2922,6 @@ interface ActionIO {
 /** Group wildcards for tools-mode `include`/`exclude` (expands to that group's visible actions). */
 type GroupWildcard = 'appleAds.*' | 'apps.*' | 'audience.*' | 'docs.*' | 'explorer.*' | 'keywords.*' | 'metrics.*' | 'reviews.*' | 'sdks.*' | 'store.*';
 //#endregion
-//#region .gen/stage/apiClientOptions.d.ts
-/** A literal bearer token, or an async getter resolved per request (for refreshing credentials). */
-type APIKey = string | (() => Promise<string>);
-/**
- * A fetch implementation — the same shape as the global `fetch`, so the global (and any
- * `(url, init) => Promise<Response>`) satisfies it. It's `defaultTransport`'s underlying `fetch` and the
- * shape of an {@link AppfiguresTransport}'s `fetch` method.
- */
-type FetchLike = (input: string, init?: RequestInit) => Promise<Response>;
-/**
- * The transport seam the toolkit calls to perform each request — from both the typed client and the tool
- * adapters. Any object with a matching `fetch` method is an `AppfiguresTransport`, so you can hand it your API
- * client directly (`transport: myClient`). Build the standard one with `defaultTransport`, or supply your own
- * to own the URL + auth.
- */
-interface AppfiguresTransport {
-  /** Perform one request: a path (or absolute URL) + `RequestInit` → `Response`. */
-  fetch(input: string, init?: RequestInit): Promise<Response>;
-}
-//#endregion
 //#region .gen/stage/toolResult.d.ts
 /**
  * Why a call failed — the af-utils-free cause taxonomy, mirroring `runAction`'s `ActionErrorCause`.
@@ -3019,6 +3010,12 @@ interface AppfiguresActionsOptions {
    */
   mapDescriptor?: (descriptor: ActionDescriptor) => ActionDescriptor;
   /**
+   * A fixed date to write the example dates in tool descriptions from, instead of today. Set it to keep the
+   * descriptions identical from day to day, so a model provider's prompt cache keeps matching them. Tools
+   * still run on today's date (e.g. their default date ranges).
+   */
+  examplesDate?: Date;
+  /**
    * Approve a mutating call. Every action with a `mutation` refuses unless this resolves `true` —
    * the guard against prompt-injected writes (e.g. `reviews.reply` reachable via attacker-authored
    * review text). Receives the parsed input.
@@ -3070,7 +3067,7 @@ interface AdapterToolsOptions<TPayload = never> {
 /**
  * Model-facing metadata for one action — everything a framework adapter needs to *register* a tool, with
  * no client attached. `execute` (on the returned surface) runs it. Kept af-utils-free so it can sit in the
- * published types.
+ * published types and be imported by browser code (the committed `staticDescriptors.gen.ts`).
  */
 interface ActionDescriptor {
   /** Dotted action path (`apps.get`) — pass it to `execute`. */
@@ -3079,8 +3076,8 @@ interface ActionDescriptor {
   name: string;
   /** description + agentHint + rendered examples, newline-joined. */
   description: string;
-  /** `undefined` for reads; the level (`create` | `update` | `destructive`) for writes. */
-  mutation: 'create' | 'update' | 'destructive' | undefined;
+  /** Absent for reads; the level (`create` | `update` | `destructive`) for writes. Gate writes on it. */
+  mutation?: 'create' | 'update' | 'destructive';
   /**
    * Input-side JSON Schema for the framework's tool definition. Typed via zod (a public dep) rather
    * than `ReturnType<typeof getActionInputJsonSchema>` so no af-utils value leaks into the published
@@ -3127,4 +3124,4 @@ interface AppfiguresActions {
  */
 declare function createAppfiguresActions(options?: AppfiguresActionsOptions): AppfiguresActions;
 //#endregion
-export { GroupWildcard as $, Tracking as $t, AppleAdsTopKeywordsInput as A, MonetizationStrategy as At, AudienceDemographicsInput as B, SdksListOutput as Bt, AppleAdsKeywordsOutput as C, MetricGranularity as Ct, AppleAdsReportOutput as D, MetricsDescribeDatasetsOutput as Dt, AppleAdsReportInput as E, MetricsDescribeDatasetsInput as Et, AppsSearchOutput as F, ReviewsListInput as Ft, EstimateBound as G, StoreAppRanksOutput as Gt, DeviceType as H, StoreAppListingInput as Ht, AppsTrackedInput as I, ReviewsListOutput as It, ExplorerDescribeFieldsInput as J, StoreCategorySubtype as Jt, ExplorerAggregateProductsInput as K, StoreCategoriesInput as Kt, AppsTrackedOutput as L, ReviewsReplyInput as Lt, AppsGetInput as M, ProductType as Mt, AppsGetOutput as N, ReviewsBreakdownInput as Nt, AppleAdsSearchTermsInput as O, MetricsQueryInput as Ot, AppsSearchInput as P, ReviewsBreakdownOutput as Pt, GroupByDimension as Q, StoreTopChartsOutput as Qt, AudienceCrossUsageInput as R, ReviewsReplyOutput as Rt, AppleAdsKeywordsInput as S, KeywordsUntrackOutput as St, AppleAdsOrganizationsOutput as T, MetricPartition as Tt, DocsGetInput as U, StoreAppListingOutput as Ut, AudienceDemographicsOutput as V, SortOrder as Vt, DocsGetOutput as W, StoreAppRanksInput as Wt, ExplorerListProductsInput as X, StoreFeaturedOutput as Xt, ExplorerDescribeFieldsOutput as Y, StoreFeaturedInput as Yt, ExplorerListProductsOutput as Z, StoreTopChartsInput as Zt, AppleAdsAdGroupsOutput as _, KeywordsTrackedRanksInput as _t, AdapterToolsOptions as a, KeywordsPaidInput as at, AppleAdsDisplayStatus as b, KeywordsTrackedTrendOutput as bt, ActionErrorCauseType as c, KeywordsRankingAppsOutput as ct, APIKey as d, KeywordsSuggestionsInput as dt, TrackingSource as en, IntelTier as et, AppfiguresTransport as f, KeywordsSuggestionsOutput as ft, AppleAdsAdGroupsInput as g, KeywordsTrackedOutput as gt, AppId as h, KeywordsTrackedInput as ht, createAppfiguresActions as i, KeywordsOrganicOutput as it, AppleAdsTopKeywordsOutput as j, Product as jt, AppleAdsSearchTermsOutput as k, MetricsQueryOutput as kt, ExecuteResult as l, KeywordsRelatedInput as lt, ActionIO as m, KeywordsTrackOutput as mt, AppfiguresActions as n, KeywordsAdvertisersOutput as nt, AppfiguresActionsOptions as o, KeywordsPaidOutput as ot, FetchLike as p, KeywordsTrackInput as pt, ExplorerAggregateProductsOutput as q, StoreCategoriesOutput as qt, ExecuteArgs as r, KeywordsOrganicInput as rt, ToolSelector as s, KeywordsRankingAppsInput as st, ActionDescriptor as t, UnifiedApp as tn, KeywordsAdvertisersInput as tt, toModelPayload as u, KeywordsRelatedOutput as ut, AppleAdsCampaignsInput as v, KeywordsTrackedRanksOutput as vt, AppleAdsOrganizationsInput as w, MetricNode as wt, AppleAdsKeywordStatus as x, KeywordsUntrackInput as xt, AppleAdsCampaignsOutput as y, KeywordsTrackedTrendInput as yt, AudienceCrossUsageOutput as z, SdksListInput as zt };
+export { IntelTier as $, TrackingSource as $t, AppsBreakdownOutput as A, Product as At, AudienceDemographicsOutput as B, SortOrder as Bt, AppleAdsReportInput as C, MetricNode as Ct, AppleAdsTopKeywordsInput as D, MetricsQueryInput as Dt, AppleAdsSearchTermsOutput as E, MetricsDescribeDatasetsOutput as Et, AppsTrackedInput as F, ReviewsListOutput as Ft, ExplorerAggregateProductsInput as G, StoreCategoriesInput as Gt, DocsGetInput as H, StoreAppListingOutput as Ht, AppsTrackedOutput as I, ReviewsReplyInput as It, ExplorerDescribeFieldsOutput as J, StoreFeaturedInput as Jt, ExplorerAggregateProductsOutput as K, StoreCategoriesOutput as Kt, AudienceCrossUsageInput as L, ReviewsReplyOutput as Lt, AppsGetOutput as M, ReviewsBreakdownInput as Mt, AppsSearchInput as N, ReviewsBreakdownOutput as Nt, AppleAdsTopKeywordsOutput as O, MetricsQueryOutput as Ot, AppsSearchOutput as P, ReviewsListInput as Pt, GroupWildcard as Q, Tracking as Qt, AudienceCrossUsageOutput as R, SdksListInput as Rt, AppleAdsOrganizationsOutput as S, MetricGranularity as St, AppleAdsSearchTermsInput as T, MetricsDescribeDatasetsInput as Tt, DocsGetOutput as U, StoreAppRanksInput as Ut, DeviceType as V, StoreAppListingInput as Vt, EstimateBound as W, StoreAppRanksOutput as Wt, ExplorerListProductsOutput as X, StoreTopChartsInput as Xt, ExplorerListProductsInput as Y, StoreFeaturedOutput as Yt, GroupByDimension as Z, StoreTopChartsOutput as Zt, AppleAdsDisplayStatus as _, KeywordsTrackedRanksOutput as _t, AdapterToolsOptions as a, KeywordsPaidOutput as at, AppleAdsKeywordsOutput as b, KeywordsUntrackInput as bt, ActionErrorCauseType as c, KeywordsRelatedInput as ct, ActionIO as d, KeywordsSuggestionsOutput as dt, UnifiedApp as en, KeywordsAdvertisersInput as et, AppId as f, KeywordsTrackInput as ft, AppleAdsCampaignsOutput as g, KeywordsTrackedRanksInput as gt, AppleAdsCampaignsInput as h, KeywordsTrackedOutput as ht, createAppfiguresActions as i, KeywordsPaidInput as it, AppsGetInput as j, ProductType as jt, AppsBreakdownInput as k, MonetizationStrategy as kt, ExecuteResult as l, KeywordsRelatedOutput as lt, AppleAdsAdGroupsOutput as m, KeywordsTrackedInput as mt, AppfiguresActions as n, AppfiguresTransport as nn, KeywordsOrganicInput as nt, AppfiguresActionsOptions as o, KeywordsRankingAppsInput as ot, AppleAdsAdGroupsInput as p, KeywordsTrackOutput as pt, ExplorerDescribeFieldsInput as q, StoreCategorySubtype as qt, ExecuteArgs as r, FetchLike as rn, KeywordsOrganicOutput as rt, ToolSelector as s, KeywordsRankingAppsOutput as st, ActionDescriptor as t, APIKey as tn, KeywordsAdvertisersOutput as tt, toModelPayload as u, KeywordsSuggestionsInput as ut, AppleAdsKeywordStatus as v, KeywordsTrackedTrendInput as vt, AppleAdsReportOutput as w, MetricPartition as wt, AppleAdsOrganizationsInput as x, KeywordsUntrackOutput as xt, AppleAdsKeywordsInput as y, KeywordsTrackedTrendOutput as yt, AudienceDemographicsInput as z, SdksListOutput as zt };

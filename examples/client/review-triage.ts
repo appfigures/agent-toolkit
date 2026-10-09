@@ -27,8 +27,20 @@ const top = (counts: Record<string, number | undefined> | undefined, n: number) 
 		.slice(0, n)
 
 console.log(`\n  ${breakdown.metadata.total_count} reviews at 1–2★`)
-console.log(`  Worst versions:  ${top(breakdown.by_version, 3).map(([v, count]) => `${v} (${count})`).join(', ') || 'n/a'}`)
-console.log(`  Worst countries: ${top(breakdown.by_country, 3).map(([c, count]) => `${c} (${count})`).join(', ') || 'n/a'}`)
+console.log(
+	`  Worst versions:  ${
+		top(breakdown.by_version, 3)
+			.map(([v, count]) => `${v} (${count})`)
+			.join(', ') || 'n/a'
+	}`
+)
+console.log(
+	`  Worst countries: ${
+		top(breakdown.by_country, 3)
+			.map(([c, count]) => `${c} (${count})`)
+			.join(', ') || 'n/a'
+	}`
+)
 
 console.log('\n  Most recent, no reply yet')
 const unreplied = recent.results.filter((r) => !r.has_response)
@@ -36,7 +48,9 @@ for (const r of unreplied) {
 	const where = [r.country, r.version].filter(Boolean).join(' · ')
 	console.log(`\n    ${'★'.repeat(r.stars)}  ${r.title}  (${where})`)
 	console.log(`    ${r.body.replace(/\s+/g, ' ').slice(0, 160)}`)
-	console.log(`    reply: af.reviews.reply({ reviewId: ${JSON.stringify(r.review_id)}, content: "..." })`)
+	console.log(
+		`    reply: af.reviews.reply({ reviewId: ${JSON.stringify(r.review_id)}, content: "..." })`
+	)
 }
 if (!unreplied.length) console.log('    (every recent 1–2★ review already has a reply)')
 console.log('')

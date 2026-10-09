@@ -13,9 +13,13 @@ if (!query) {
 const af = new AppfiguresAgentClient() // reads APPFIGURES_API_KEY from env
 
 const compact = (n: number | undefined) =>
-	n == null ? 'n/a' : new Intl.NumberFormat('en', { notation: 'compact', maximumFractionDigits: 1 }).format(n)
-const bar = (value: number, max: number, width = 22) => '█'.repeat(Math.max(1, Math.round((value / max) * width)))
-const month = (iso: string) => new Date(iso).toLocaleString('en', { month: 'short', year: '2-digit' })
+	n == null
+		? 'n/a'
+		: new Intl.NumberFormat('en', { notation: 'compact', maximumFractionDigits: 1 }).format(n)
+const bar = (value: number, max: number, width = 22) =>
+	'█'.repeat(Math.max(1, Math.round((value / max) * width)))
+const month = (iso: string) =>
+	new Date(iso).toLocaleString('en', { month: 'short', year: '2-digit' })
 
 // 1. Find the app
 const { results } = await af.apps.search({ q: query, count: 1 })
@@ -27,7 +31,9 @@ if (!app) {
 
 console.log(`\n  ${app.name}`)
 console.log(`  ${app.publisher}  ·  ${app.storefronts.join(', ')}`)
-console.log(`  ~${compact(app.downloads_last_month)} downloads/mo   ~$${compact(app.revenue_last_month_usd)} revenue/mo`)
+console.log(
+	`  ~${compact(app.downloads_last_month)} downloads/mo   ~$${compact(app.revenue_last_month_usd)} revenue/mo`
+)
 
 // 2. Download trend — recent months. The most recent month is usually still accruing (estimates
 // lag a day or two), so drop it when it's clearly partial so the trend doesn't read as a crash.

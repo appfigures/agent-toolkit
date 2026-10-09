@@ -11,14 +11,18 @@ const names = process.argv
 	.map((s) => s.trim())
 	.filter(Boolean)
 if (names.length < 2) {
-	console.error('Usage: npx tsx examples/client/competitor-report.ts "<your app>" "<competitor>" ["<competitor 2>" ...]')
+	console.error(
+		'Usage: npx tsx examples/client/competitor-report.ts "<your app>" "<competitor>" ["<competitor 2>" ...]'
+	)
 	process.exit(1)
 }
 
 const af = new AppfiguresAgentClient() // reads APPFIGURES_API_KEY from env
 
 const compact = (n: number | undefined) =>
-	n == null ? 'n/a' : new Intl.NumberFormat('en', { notation: 'compact', maximumFractionDigits: 1 }).format(n)
+	n == null
+		? 'n/a'
+		: new Intl.NumberFormat('en', { notation: 'compact', maximumFractionDigits: 1 }).format(n)
 // Estimates come back as a bound rather than an exact figure for sub-threshold apps.
 const withBound = (value: number | undefined, bound: 'at_most' | 'at_least' | undefined) =>
 	(bound === 'at_most' ? '≤' : bound === 'at_least' ? '≥' : '') + compact(value)
@@ -60,6 +64,16 @@ const report = (
 }
 
 console.log('\n  Head-to-head (last calendar month)')
-report('Downloads', (a) => a.downloads_last_month, (a) => a.downloads_last_month_bound, false)
-report('Revenue (USD)', (a) => a.revenue_last_month_usd, (a) => a.revenue_last_month_usd_bound, true)
+report(
+	'Downloads',
+	(a) => a.downloads_last_month,
+	(a) => a.downloads_last_month_bound,
+	false
+)
+report(
+	'Revenue (USD)',
+	(a) => a.revenue_last_month_usd,
+	(a) => a.revenue_last_month_usd_bound,
+	true
+)
 console.log('')

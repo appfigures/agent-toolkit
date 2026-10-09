@@ -7,7 +7,9 @@ import { AppfiguresAgentClient } from '@appfigures/agent-toolkit'
 
 const [term, country = 'US', storefront = 'apple:ios'] = process.argv.slice(2)
 if (!term) {
-	console.error('Usage: npx tsx examples/client/keyword-competition.ts "<keyword>" [country] [storefront]')
+	console.error(
+		'Usage: npx tsx examples/client/keyword-competition.ts "<keyword>" [country] [storefront]'
+	)
 	process.exit(1)
 }
 
@@ -33,7 +35,9 @@ console.log('\n  Ranks organically')
 for (const app of ranking.results.slice(0, 5)) console.log(`    ${app.name}  ·  ${app.developer}`)
 
 console.log('\n  Buys ads here (by impression share)')
-const bidders = [...advertisers.results].sort((a, b) => b.impressions_share - a.impressions_share).slice(0, 5)
+const bidders = [...advertisers.results]
+	.sort((a, b) => b.impressions_share - a.impressions_share)
+	.slice(0, 5)
 if (!bidders.length) console.log('    (no advertisers detected)')
 for (const ad of bidders) {
 	const organic = ad.organic_rank == null ? 'not ranked organically' : `organic #${ad.organic_rank}`
