@@ -133,27 +133,10 @@ jobs:
           process.stdout.write(captured.join('\n').trim() + '\n')
           NODE
 
-      - name: Publish to npm
-        run: |
-          set -eo pipefail
-          NAME="$(node -p 'require("./package.json").name')"
-          VERSION="$(node -p 'require("./package.json").version')"
-          TAG="$(node -e 'const version = process.argv[1]; const match = version.match(/^\d+\.\d+\.\d+-([0-9A-Za-z]+)/); if (match) process.stdout.write(match[1]);' "${VERSION}")"
-
-          if npm view "${NAME}@${VERSION}" version >/dev/null 2>&1; then
-            echo "${NAME}@${VERSION} is already published; skipping npm publish"
-            exit 0
-          fi
-
-          if [ -n "$TAG" ]; then
-            npm publish --tag "$TAG"
-          else
-            npm publish
-          fi
-
-      # Create the GitHub Release after npm. npm publish is irreversible and the release is the
-      # user-facing record of it; a rerun skips both already-done steps (npm self-skips, release
-      # self-skips).
+      # The release goes first and npm staging last. A staged version can't be staged again, and this
+      # job can't see what's staged (OIDC can't run `npm stage list`), so staging must be the final
+      # step: a rerun then retries only what failed. The release appears before a maintainer approves
+      # the staged version; if they reject it, delete the release.
       - name: Create GitHub Release
         env:
           GH_TOKEN: ${{ github.token }}
@@ -168,3 +151,25 @@ jobs:
           gh release create "${GITHUB_REF_NAME}" \
             --title "@appfigures/agent-toolkit v${VERSION}" \
             --notes-file release-notes.md
+
+      # Staged, not published: the version waits on npm until a maintainer approves it with 2FA
+      # (`npm stage list`, then `npm stage approve <stage-id>`), so this workflow alone can't ship a
+      # release. The Trusted Publisher is stage-only, which rejects a plain `npm publish`.
+      - name: Stage on npm
+        run: |
+          set -eo pipefail
+          NAME="$(node -p 'require("./package.json").name')"
+          VERSION="$(node -p 'require("./package.json").version')"
+          TAG="$(node -e 'const version = process.argv[1]; const match = version.match(/^\d+\.\d+\.\d+-([0-9A-Za-z]+)/); if (match) process.stdout.write(match[1]);' "${VERSION}")"
+
+          if npm view "${NAME}@${VERSION}" version >/dev/null 2>&1; then
+            echo "${NAME}@${VERSION} is already published; skipping npm stage publish"
+            exit 0
+          fi
+
+          if [ -n "$TAG" ]; then
+            npm stage publish --provenance --tag "$TAG"
+          else
+            npm stage publish --provenance
+          fi
+          echo "::notice::${NAME}@${VERSION} is staged. Approve it with 2FA: npm stage list ${NAME}, then npm stage approve <stage-id>."
