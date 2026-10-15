@@ -1,5 +1,12 @@
 # Changelog
 
+## [2.1.0] — 2026-10-15
+
+### Added
+
+- **Tools for OpenAI's Responses API.** Connect the tools to OpenAI's current models, which call tools through the Responses API, with the model's arguments held to each tool's schema wherever OpenAI's strict mode supports it.
+- **Per-call authentication.** Authenticate each call as the user it runs for, or label, log, and meter a call's requests by action, without rebuilding the client or the tools.
+
 ## [2.0.0] — 2026-10-09
 
 ### Added

@@ -1,4 +1,4 @@
-import { t as ActionDescriptor } from "./actions-CMfmwPV6.js";
+import { t as ActionDescriptor } from "./actions-DrqZx_9c.js";
 //#region .gen/stage/staticDescriptors.gen.d.ts
 /**
  * The mutating actions (`mutation` set) — the writes a human-in-the-loop UI gates on approval;

@@ -27,10 +27,11 @@ The adapters call both for you. Call them yourself only to drive a framework the
 
 ### Add tools to your framework
 
-Each adapter takes the surface and returns that framework's native tool shape, plus a `mutations` map. The write gate, hint resolution, and error shaping are identical across all three; only the returned shape differs.
+Each adapter takes the surface and returns that framework's native tool shape, plus a `mutations` map. The write gate, hint resolution, and error shaping are identical across all of them; only the returned shape differs.
 
 - **Vercel AI SDK** — `toAISDKTools(actions, options?)` from `@appfigures/agent-toolkit/ai` returns `{ tools, mutations }`. `tools` is a `Record<string, Tool>` you pass to `generateText` or `streamText`. The framework runs the tools for you.
-- **OpenAI** — `toOpenAITools(actions, options?)` from `@appfigures/agent-toolkit/openai` returns `{ tools, handleToolCall, mutations }`. The OpenAI SDK doesn't run tools for you: pass `tools` to `chat.completions.create`, then call `handleToolCall(call)` for each tool call and push the returned message back into `messages`.
+- **OpenAI Responses API** — `toOpenAIResponsesTools(actions, options?)` from `@appfigures/agent-toolkit/openai` returns `{ tools, handleToolCall, mutations }`. The OpenAI SDK doesn't run tools for you: pass `tools` to `responses.create`, push the response's output back into `input`, then call `handleToolCall(call)` for each `function_call` item and push the returned `function_call_output` into `input`. OpenAI's current models call tools through this API.
+- **OpenAI Chat Completions** — `toOpenAITools(actions, options?)` from the same entry point returns the same kit in Chat Completions shapes: pass `tools` to `chat.completions.create`, then call `handleToolCall(call)` for each tool call and push the returned message back into `messages`. Use it for a model or provider that only speaks Chat Completions.
 - **LangChain** — `toLangChainTools(actions, options?)` from `@appfigures/agent-toolkit/langchain` returns `{ tools, mutations }`. `tools` is a `StructuredToolInterface[]`, ready for `bindTools` or an agent.
 
 ### Approve writes
@@ -110,18 +111,26 @@ createAppfiguresActions({
 
 ### Authenticate each request
 
-Build the surface once and authenticate each call as a different user, the multi-tenant case. Every adapter takes an `execute` hook that runs the call. Inside it, hand the surface's `execute` a per-call `transport`, and credentials vary per request with no rebuild.
+Build the surface once and authenticate each call as a different user, the multi-tenant case. Pass `transport` a function: the surface calls it once per tool call and sends every request that call makes through the transport it returns, so credentials vary per request with no rebuild.
 
 ```ts
-const actions = createAppfiguresActions() // built once, no shared credential
-
-const { tools } = toAISDKTools(actions, {
-	execute: ({ path, input, payload, signal }) =>
-		actions.execute({ path, input, signal, transport: currentUserClient() }),
+const actions = createAppfiguresActions({
+	transport: () => currentUserClient(), // built once, a transport per call
 })
 ```
 
-`currentUserClient()` is your per-request client. `payload` carries the framework's per-call context: `{ toolCallId }` for the AI SDK and OpenAI, the `ToolRunnableConfig` for LangChain.
+`currentUserClient()` returns the client for the user whose request is running, for example read from `AsyncLocalStorage`. The function also receives the call's action as `{ path }`, for labeling, logging, or metering a call's requests by action.
+
+When the credential comes from the framework's per-call context instead, use the adapter's `execute` hook. It runs the call; hand the surface's `execute` a per-call `transport`:
+
+```ts
+const { tools } = toAISDKTools(actions, {
+	execute: ({ path, input, payload, signal }) =>
+		actions.execute({ path, input, signal, transport: clientFor(payload) }),
+})
+```
+
+`clientFor(payload)` is your client for that call's user. `payload` carries the framework's per-call context: `{ toolCallId }` for the AI SDK and both OpenAI adapters (the Responses `call_id`, or the Chat Completions tool call `id`), the `ToolRunnableConfig` for LangChain.
 
 The same per-call `transport` is available without an adapter: `actions.execute({ path, input, transport })`.
 
@@ -133,4 +142,4 @@ On a framework the adapters don't cover, use the surface directly. `actions.list
 
 ### Exported types
 
-`AppfiguresActions`, `AppfiguresActionsOptions`, `AdapterToolsOptions`, `ActionDescriptor`, `ExecuteArgs`, `ExecuteResult`, `ActionErrorCauseType`, and `ToolSelector`, plus the transport types (`APIKey`, `FetchLike`, `AppfiguresTransport`, `DefaultTransportOptions`) and every action's input and output type. `toModelPayload` and `resolveToolCall` are exported as values.
+`AppfiguresActions`, `AppfiguresActionsOptions`, `AdapterToolsOptions`, `ActionDescriptor`, `ExecuteArgs`, `ExecuteResult`, `ActionErrorCauseType`, and `ToolSelector`, plus the transport types (`APIKey`, `FetchLike`, `AppfiguresTransport`, `TransportFactory`, `DefaultTransportOptions`) and every action's input and output type. `toModelPayload` and `resolveToolCall` are exported as values.

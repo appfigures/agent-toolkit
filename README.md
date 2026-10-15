@@ -60,7 +60,7 @@ Every action, with its parameters, is in the [action reference](#action-referenc
 
 One tool per action. Reads run on their own. Writes wait for your approval.
 
-Build the action surface once with `createAppfiguresActions`, then adapt it to your framework's tools with `toAISDKTools`, `toOpenAITools`, or `toLangChainTools`. The surface holds your API key and options; each adapter is a thin projection of it.
+Build the action surface once with `createAppfiguresActions`, then adapt it to your framework's tools with `toAISDKTools`, `toOpenAIResponsesTools`, or `toLangChainTools`. The surface holds your API key and options; each adapter is a thin projection of it.
 
 Install your framework's SDK next to the toolkit: `ai` and a model provider such as `@ai-sdk/openai` for the Vercel AI SDK, `openai` for OpenAI, or `@langchain/core @langchain/langgraph` for LangChain.
 
@@ -73,7 +73,7 @@ import { createAppfiguresActions } from '@appfigures/agent-toolkit'
 import { toAISDKTools } from '@appfigures/agent-toolkit/ai'
 import { generateText, type LanguageModel, stepCountIs } from 'ai'
 
-// `model` is your provider's model, e.g. `openai('gpt-4o')` from `@ai-sdk/openai`.
+// `model` is your provider's model, e.g. `openai('gpt-6.1-sol')` from `@ai-sdk/openai`.
 export async function run(model: LanguageModel) {
 	const { tools } = toAISDKTools(createAppfiguresActions()) // reads APPFIGURES_API_KEY from env
 	const { text } = await generateText({
@@ -96,28 +96,35 @@ The OpenAI SDK doesn't run tools for you. Call `handleToolCall` for each one, an
 
 ```ts
 import { createAppfiguresActions } from '@appfigures/agent-toolkit'
-import { toOpenAITools } from '@appfigures/agent-toolkit/openai'
+import { toOpenAIResponsesTools } from '@appfigures/agent-toolkit/openai'
 import OpenAI from 'openai'
-import type { ChatCompletionMessageParam } from 'openai/resources'
+import { toResponseInputItems } from 'openai/lib/responses/ResponseInputItems'
+import type { ResponseInputItem } from 'openai/resources/responses/responses'
 
 // The OpenAI SDK doesn't run tools for you: call handleToolCall for each and loop until it stops.
 const client = new OpenAI() // reads OPENAI_API_KEY from env
-const { tools, handleToolCall } = toOpenAITools(createAppfiguresActions()) // reads APPFIGURES_API_KEY
+const { tools, handleToolCall } = toOpenAIResponsesTools(createAppfiguresActions()) // reads APPFIGURES_API_KEY
 
-const messages: ChatCompletionMessageParam[] = [
+const input: ResponseInputItem[] = [
 	{ role: 'user', content: 'What are the latest downloads and revenue for Spotify?' },
 ]
 
 while (true) {
-	const { message } = (await client.chat.completions.create({ model: 'gpt-4o', messages, tools }))
-		.choices[0]!
-	messages.push(message)
-	if (!message.tool_calls?.length) break
-	for (const call of message.tool_calls) messages.push(await handleToolCall(call))
+	const response = await client.responses.create({ model: 'gpt-6.1-sol', input, tools })
+	// Send the model's output back with the tool results; reasoning models need their reasoning items too.
+	input.push(...toResponseInputItems(response.output))
+	const calls = response.output.filter((item) => item.type === 'function_call')
+	if (!calls.length) {
+		console.log(response.output_text)
+		break
+	}
+	for (const call of calls) input.push(await handleToolCall(call))
 }
 ```
 
 <!-- END example: openai -->
+
+This uses the Responses API, which OpenAI's current models call tools through. On Chat Completions, or a provider that only speaks it, use `toOpenAITools` instead: the same kit, in Chat Completions shapes. `handleToolCall` returns the `{ role: 'tool' }` message to push into `messages`.
 
 ### LangChain
 
@@ -183,7 +190,7 @@ Every option has a safe default, so none of this is required to start.
 - **Hints** — a caveat that rides with the result: truncated data, another page, a deprecated action. Tools read them inline; the client prints them to `stderr`. → [client](./docs/client-api.md#receive-hints) · [tools](./docs/tools-api.md#handle-a-result)
 - **Approve writes** — every write refuses until you approve it, so a prompt-injected `reviews.reply` never posts. → [tools-api.md](./docs/tools-api.md#approve-writes)
 - **Scope the surface** — expose only the actions you choose, by path or group wildcard. → [tools-api.md](./docs/tools-api.md#scope-which-actions-are-exposed)
-- **Bring your own transport** — customize the built-in one (retries, a proxy, a non-production base URL) or replace it outright. → [client](./docs/client-api.md#configure-authentication) · [tools](./docs/tools-api.md#configure-authentication)
+- **Bring your own transport** — customize the built-in one (retries, a proxy, a non-production base URL), replace it outright, or build one for each call. → [client](./docs/client-api.md#configure-authentication) · [tools](./docs/tools-api.md#configure-authentication)
 - **Authenticate each request** — build the surface once and vary credentials per call, for a server serving many users. → [tools-api.md](./docs/tools-api.md#authenticate-each-request)
 
 ## Action reference
@@ -285,7 +292,7 @@ Client scripts in [`examples/client/`](./examples/client), each a real solution 
 
 Tool-wiring for each framework in [`examples/tools/`](./examples/tools), matching the snippets [above](#tools-for-your-agent-framework):
 
-- [`openai-tools.ts`](./examples/tools/openai-tools.ts) — the OpenAI tool-call loop, runnable end-to-end with an OpenAI key.
+- [`openai-tools.ts`](./examples/tools/openai-tools.ts) — the OpenAI Responses API tool-call loop, runnable end-to-end with an OpenAI key.
 - [`ai-sdk-tools.ts`](./examples/tools/ai-sdk-tools.ts) — Vercel AI SDK wiring, exported as `run(model)` so you pass your provider's model.
 - [`langchain-tools.ts`](./examples/tools/langchain-tools.ts) — LangChain wiring via `bindTools`, exported as `run(model)` for your chat model.
 

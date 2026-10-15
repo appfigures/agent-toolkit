@@ -3,25 +3,28 @@
 // The `// #region readme` block below is injected into the README, so it stays real and compiling.
 // #region readme
 import { createAppfiguresActions } from '@appfigures/agent-toolkit'
-import { toOpenAITools } from '@appfigures/agent-toolkit/openai'
+import { toOpenAIResponsesTools } from '@appfigures/agent-toolkit/openai'
 import OpenAI from 'openai'
-import type { ChatCompletionMessageParam } from 'openai/resources'
+import { toResponseInputItems } from 'openai/lib/responses/ResponseInputItems'
+import type { ResponseInputItem } from 'openai/resources/responses/responses'
 
 // The OpenAI SDK doesn't run tools for you: call handleToolCall for each and loop until it stops.
 const client = new OpenAI() // reads OPENAI_API_KEY from env
-const { tools, handleToolCall } = toOpenAITools(createAppfiguresActions()) // reads APPFIGURES_API_KEY
+const { tools, handleToolCall } = toOpenAIResponsesTools(createAppfiguresActions()) // reads APPFIGURES_API_KEY
 
-const messages: ChatCompletionMessageParam[] = [
+const input: ResponseInputItem[] = [
 	{ role: 'user', content: 'What are the latest downloads and revenue for Spotify?' },
 ]
 
 while (true) {
-	const { message } = (await client.chat.completions.create({ model: 'gpt-4o', messages, tools }))
-		.choices[0]!
-	messages.push(message)
-	if (!message.tool_calls?.length) break
-	for (const call of message.tool_calls) messages.push(await handleToolCall(call))
+	const response = await client.responses.create({ model: 'gpt-6.1-sol', input, tools })
+	// Send the model's output back with the tool results; reasoning models need their reasoning items too.
+	input.push(...toResponseInputItems(response.output))
+	const calls = response.output.filter((item) => item.type === 'function_call')
+	if (!calls.length) {
+		console.log(response.output_text)
+		break
+	}
+	for (const call of calls) input.push(await handleToolCall(call))
 }
 // #endregion
-
-console.log(messages.at(-1)?.content)

@@ -136,6 +136,14 @@ To replace it, pass your own client: any object with a `fetch(path, init)` metho
 const af = new AppfiguresAgentClient({ transport: myClient })
 ```
 
+To build a transport for each call instead, pass a function. The client calls it once per method call and sends every request that call makes through the transport it returns. Use it to authenticate each call as the current user, or to label, log, or meter a call's requests by action; it receives the action as `{ path }`:
+
+```ts
+const af = new AppfiguresAgentClient({ transport: () => currentUserClient() })
+```
+
+`currentUserClient()` returns the client for the user whose request is running, for example read from `AsyncLocalStorage`.
+
 ### Abort a call
 
 Pass a `signal` as the second argument:
@@ -153,4 +161,4 @@ The signal is per-call; a shared one would abort every later call.
 
 ### Exported types
 
-`AppfiguresAgentClientOptions`, `CallOptions`, `HintsCallback`, `APIKey`, `FetchLike`, `AppfiguresTransport`, `DefaultTransportOptions`, and `ActionErrorCauseType`, along with every action's input and output type (`AppsGetInput`, `AppsSearchOutput`, `Product`, …). Import these when you need to name a type in your own signatures.
+`AppfiguresAgentClientOptions`, `CallOptions`, `HintsCallback`, `APIKey`, `FetchLike`, `AppfiguresTransport`, `TransportFactory`, `DefaultTransportOptions`, and `ActionErrorCauseType`, along with every action's input and output type (`AppsGetInput`, `AppsSearchOutput`, `Product`, …). Import these when you need to name a type in your own signatures.

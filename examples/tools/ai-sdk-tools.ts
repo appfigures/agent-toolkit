@@ -5,7 +5,7 @@ import { createAppfiguresActions } from '@appfigures/agent-toolkit'
 import { toAISDKTools } from '@appfigures/agent-toolkit/ai'
 import { generateText, type LanguageModel, stepCountIs } from 'ai'
 
-// `model` is your provider's model, e.g. `openai('gpt-4o')` from `@ai-sdk/openai`.
+// `model` is your provider's model, e.g. `openai('gpt-6.1-sol')` from `@ai-sdk/openai`.
 export async function run(model: LanguageModel) {
 	const { tools } = toAISDKTools(createAppfiguresActions()) // reads APPFIGURES_API_KEY from env
 	const { text } = await generateText({

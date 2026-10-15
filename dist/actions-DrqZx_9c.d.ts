@@ -1,24 +1,4 @@
 import { z } from "zod";
-//#region .gen/stage/apiClientOptions.d.ts
-/** A literal bearer token, or an async getter resolved per request (for refreshing credentials). */
-type APIKey = string | (() => Promise<string>);
-/**
- * A fetch implementation — the same shape as the global `fetch`, so the global (and any
- * `(url, init) => Promise<Response>`) satisfies it. It's `defaultTransport`'s underlying `fetch` and the
- * shape of an {@link AppfiguresTransport}'s `fetch` method.
- */
-type FetchLike = (input: string, init?: RequestInit) => Promise<Response>;
-/**
- * The transport seam the toolkit calls to perform each request — from both the typed client and the tool
- * adapters. Any object with a matching `fetch` method is an `AppfiguresTransport`, so you can hand it your API
- * client directly (`transport: myClient`). Build the standard one with `defaultTransport`, or supply your own
- * to own the URL + auth.
- */
-interface AppfiguresTransport {
-  /** Perform one request: a path (or absolute URL) + `RequestInit` → `Response`. */
-  fetch(input: string, init?: RequestInit): Promise<Response>;
-}
-//#endregion
 //#region .gen/stage/publicTypes.d.ts
 type AppId = number | string;
 type AppleAdsDisplayStatus = 'running' | 'on_hold' | 'paused' | 'deleted';
@@ -2922,6 +2902,36 @@ interface ActionIO {
 /** Group wildcards for tools-mode `include`/`exclude` (expands to that group's visible actions). */
 type GroupWildcard = 'appleAds.*' | 'apps.*' | 'audience.*' | 'docs.*' | 'explorer.*' | 'keywords.*' | 'metrics.*' | 'reviews.*' | 'sdks.*' | 'store.*';
 //#endregion
+//#region .gen/stage/apiClientOptions.d.ts
+/** A literal bearer token, or an async getter resolved per request (for refreshing credentials). */
+type APIKey = string | (() => Promise<string>);
+/**
+ * A fetch implementation — the same shape as the global `fetch`, so the global (and any
+ * `(url, init) => Promise<Response>`) satisfies it. It's `defaultTransport`'s underlying `fetch` and the
+ * shape of an {@link AppfiguresTransport}'s `fetch` method.
+ */
+type FetchLike = (input: string, init?: RequestInit) => Promise<Response>;
+/**
+ * The transport seam the toolkit calls to perform each request — from both the typed client and the tool
+ * adapters. Any object with a matching `fetch` method is an `AppfiguresTransport`, so you can hand it your API
+ * client directly (`transport: myClient`). Build the standard one with `defaultTransport`, or supply your own
+ * to own the URL + auth.
+ */
+interface AppfiguresTransport {
+  /** Perform one request: a path (or absolute URL) + `RequestInit` → `Response`. */
+  fetch(input: string, init?: RequestInit): Promise<Response>;
+}
+/**
+ * Builds the transport for one action call, for a `transport` that varies by call: the toolkit calls it once
+ * per call, before the call's first request, and sends every request that call makes (pagination,
+ * follow-ups) through the transport it returns. Use it to authenticate each call as the current user, or to
+ * label, log, or meter a call's requests by action.
+ */
+type TransportFactory = (call: {
+  /** The action being called, as its dotted path (`apps.get`). */
+  path: keyof ActionIO;
+}) => AppfiguresTransport;
+//#endregion
 //#region .gen/stage/toolResult.d.ts
 /**
  * Why a call failed — the af-utils-free cause taxonomy, mirroring `runAction`'s `ActionErrorCause`.
@@ -2955,7 +2965,7 @@ type ExecuteResult = {
 /**
  * Map an {@link ExecuteResult} to the payload the model sees, so the success / failure shapes live in one
  * place instead of being re-derived in each framework adapter. Adapters that return objects (AI SDK) use it
- * directly; adapters that need a string (OpenAI Chat Completions, LangChain) `JSON.stringify` it.
+ * directly; adapters that need a string (both OpenAI APIs, LangChain) `JSON.stringify` it.
  *
  * - **success** (`ok: true`) → `{ data, hints? }` — `hints` as a sibling key (not concatenated into `data`)
  *   so the model reads a truncation/deprecation note alongside the numbers it qualifies.
@@ -2993,11 +3003,12 @@ interface AppfiguresActionsOptions {
   /**
    * **Replace** the built-in transport with your own client: it gets the bare path (no `baseUrl` prefix) and
    * owns auth (the SDK attaches no `Authorization`) — the multi-tenant seam where a host routes each request
-   * through a per-request client. Mutually exclusive with `apiKey`. To *customize* the built-in transport
-   * instead of replacing it — a non-production base URL, a wrapped `fetch` — pass
-   * `transport: defaultTransport({ apiKey, baseUrl, fetch })`. See `AppfiguresTransport`.
+   * through a per-request client. Pass a {@link TransportFactory} to build each call its own transport.
+   * Mutually exclusive with `apiKey`. To *customize* the built-in transport instead of replacing it — a
+   * non-production base URL, a wrapped `fetch` — pass `transport: defaultTransport({ apiKey, baseUrl, fetch })`.
+   * See `AppfiguresTransport`.
    */
-  transport?: AppfiguresTransport;
+  transport?: AppfiguresTransport | TransportFactory;
   /** Restrict to these actions/groups. Omit for the full visible surface. */
   include?: ToolSelector[];
   /** Drop these actions/groups (applied after `include`). */
@@ -3049,7 +3060,9 @@ interface AdapterToolsOptions<TPayload = never> {
    * adapter's per-call `payload` and returns the {@link ExecuteResult} the adapter then maps. The point is
    * per-call transport: a multi-tenant host builds a per-request client from the payload and passes it as
    * `transport` (e.g. `actions.execute({ path, input, signal, transport })`), so auth varies per call
-   * without rebuilding the surface. Omit it and the adapter runs the call with the configured transport.
+   * without rebuilding the surface. A transport that doesn't depend on the payload needs no hook: pass a
+   * {@link TransportFactory} as `createAppfiguresActions`'s `transport`. Omit the hook and the adapter runs the
+   * call with the configured transport.
    */
   execute?: (args: {
     /** The action being called, as its dotted path (`apps.get`). */
@@ -3118,10 +3131,10 @@ interface AppfiguresActions {
   execute(args: ExecuteArgs): Promise<ExecuteResult>;
 }
 /**
- * Build the Appfigures action surface for the selected actions. Transport is configured here and reused;
- * a per-call `execute(…, { transport })` overrides it. Reads run on their own; every mutation refuses unless
- * `confirmMutation` approves it.
+ * Build the Appfigures action surface for the selected actions. Transport is configured here, one for every
+ * call or a `TransportFactory` that builds each call's own; a per-call `execute(…, { transport })` overrides
+ * it. Reads run on their own; every mutation refuses unless `confirmMutation` approves it.
  */
 declare function createAppfiguresActions(options?: AppfiguresActionsOptions): AppfiguresActions;
 //#endregion
-export { IntelTier as $, TrackingSource as $t, AppsBreakdownOutput as A, Product as At, AudienceDemographicsOutput as B, SortOrder as Bt, AppleAdsReportInput as C, MetricNode as Ct, AppleAdsTopKeywordsInput as D, MetricsQueryInput as Dt, AppleAdsSearchTermsOutput as E, MetricsDescribeDatasetsOutput as Et, AppsTrackedInput as F, ReviewsListOutput as Ft, ExplorerAggregateProductsInput as G, StoreCategoriesInput as Gt, DocsGetInput as H, StoreAppListingOutput as Ht, AppsTrackedOutput as I, ReviewsReplyInput as It, ExplorerDescribeFieldsOutput as J, StoreFeaturedInput as Jt, ExplorerAggregateProductsOutput as K, StoreCategoriesOutput as Kt, AudienceCrossUsageInput as L, ReviewsReplyOutput as Lt, AppsGetOutput as M, ReviewsBreakdownInput as Mt, AppsSearchInput as N, ReviewsBreakdownOutput as Nt, AppleAdsTopKeywordsOutput as O, MetricsQueryOutput as Ot, AppsSearchOutput as P, ReviewsListInput as Pt, GroupWildcard as Q, Tracking as Qt, AudienceCrossUsageOutput as R, SdksListInput as Rt, AppleAdsOrganizationsOutput as S, MetricGranularity as St, AppleAdsSearchTermsInput as T, MetricsDescribeDatasetsInput as Tt, DocsGetOutput as U, StoreAppRanksInput as Ut, DeviceType as V, StoreAppListingInput as Vt, EstimateBound as W, StoreAppRanksOutput as Wt, ExplorerListProductsOutput as X, StoreTopChartsInput as Xt, ExplorerListProductsInput as Y, StoreFeaturedOutput as Yt, GroupByDimension as Z, StoreTopChartsOutput as Zt, AppleAdsDisplayStatus as _, KeywordsTrackedRanksOutput as _t, AdapterToolsOptions as a, KeywordsPaidOutput as at, AppleAdsKeywordsOutput as b, KeywordsUntrackInput as bt, ActionErrorCauseType as c, KeywordsRelatedInput as ct, ActionIO as d, KeywordsSuggestionsOutput as dt, UnifiedApp as en, KeywordsAdvertisersInput as et, AppId as f, KeywordsTrackInput as ft, AppleAdsCampaignsOutput as g, KeywordsTrackedRanksInput as gt, AppleAdsCampaignsInput as h, KeywordsTrackedOutput as ht, createAppfiguresActions as i, KeywordsPaidInput as it, AppsGetInput as j, ProductType as jt, AppsBreakdownInput as k, MonetizationStrategy as kt, ExecuteResult as l, KeywordsRelatedOutput as lt, AppleAdsAdGroupsOutput as m, KeywordsTrackedInput as mt, AppfiguresActions as n, AppfiguresTransport as nn, KeywordsOrganicInput as nt, AppfiguresActionsOptions as o, KeywordsRankingAppsInput as ot, AppleAdsAdGroupsInput as p, KeywordsTrackOutput as pt, ExplorerDescribeFieldsInput as q, StoreCategorySubtype as qt, ExecuteArgs as r, FetchLike as rn, KeywordsOrganicOutput as rt, ToolSelector as s, KeywordsRankingAppsOutput as st, ActionDescriptor as t, APIKey as tn, KeywordsAdvertisersOutput as tt, toModelPayload as u, KeywordsSuggestionsInput as ut, AppleAdsKeywordStatus as v, KeywordsTrackedTrendInput as vt, AppleAdsReportOutput as w, MetricPartition as wt, AppleAdsOrganizationsInput as x, KeywordsUntrackOutput as xt, AppleAdsKeywordsInput as y, KeywordsTrackedTrendOutput as yt, AudienceDemographicsInput as z, SdksListOutput as zt };
+export { ExplorerListProductsInput as $, StoreFeaturedOutput as $t, AppleAdsSearchTermsOutput as A, MetricsDescribeDatasetsOutput as At, AppsTrackedOutput as B, ReviewsReplyInput as Bt, AppleAdsKeywordsInput as C, KeywordsTrackedTrendOutput as Ct, AppleAdsReportInput as D, MetricNode as Dt, AppleAdsOrganizationsOutput as E, MetricGranularity as Et, AppsGetInput as F, ProductType as Ft, DeviceType as G, StoreAppListingInput as Gt, AudienceCrossUsageOutput as H, SdksListInput as Ht, AppsGetOutput as I, ReviewsBreakdownInput as It, EstimateBound as J, StoreAppRanksOutput as Jt, DocsGetInput as K, StoreAppListingOutput as Kt, AppsSearchInput as L, ReviewsBreakdownOutput as Lt, AppleAdsTopKeywordsOutput as M, MetricsQueryOutput as Mt, AppsBreakdownInput as N, MonetizationStrategy as Nt, AppleAdsReportOutput as O, MetricPartition as Ot, AppsBreakdownOutput as P, Product as Pt, ExplorerDescribeFieldsOutput as Q, StoreFeaturedInput as Qt, AppsSearchOutput as R, ReviewsListInput as Rt, AppleAdsKeywordStatus as S, KeywordsTrackedTrendInput as St, AppleAdsOrganizationsInput as T, KeywordsUntrackOutput as Tt, AudienceDemographicsInput as U, SdksListOutput as Ut, AudienceCrossUsageInput as V, ReviewsReplyOutput as Vt, AudienceDemographicsOutput as W, SortOrder as Wt, ExplorerAggregateProductsOutput as X, StoreCategoriesOutput as Xt, ExplorerAggregateProductsInput as Y, StoreCategoriesInput as Yt, ExplorerDescribeFieldsInput as Z, StoreCategorySubtype as Zt, AppleAdsAdGroupsInput as _, KeywordsTrackOutput as _t, AdapterToolsOptions as a, KeywordsAdvertisersOutput as at, AppleAdsCampaignsOutput as b, KeywordsTrackedRanksInput as bt, ActionErrorCauseType as c, KeywordsPaidInput as ct, APIKey as d, KeywordsRankingAppsOutput as dt, StoreTopChartsInput as en, ExplorerListProductsOutput as et, AppfiguresTransport as f, KeywordsRelatedInput as ft, AppId as g, KeywordsTrackInput as gt, ActionIO as h, KeywordsSuggestionsOutput as ht, createAppfiguresActions as i, UnifiedApp as in, KeywordsAdvertisersInput as it, AppleAdsTopKeywordsInput as j, MetricsQueryInput as jt, AppleAdsSearchTermsInput as k, MetricsDescribeDatasetsInput as kt, ExecuteResult as l, KeywordsPaidOutput as lt, TransportFactory as m, KeywordsSuggestionsInput as mt, AppfiguresActions as n, Tracking as nn, GroupWildcard as nt, AppfiguresActionsOptions as o, KeywordsOrganicInput as ot, FetchLike as p, KeywordsRelatedOutput as pt, DocsGetOutput as q, StoreAppRanksInput as qt, ExecuteArgs as r, TrackingSource as rn, IntelTier as rt, ToolSelector as s, KeywordsOrganicOutput as st, ActionDescriptor as t, StoreTopChartsOutput as tn, GroupByDimension as tt, toModelPayload as u, KeywordsRankingAppsInput as ut, AppleAdsAdGroupsOutput as v, KeywordsTrackedInput as vt, AppleAdsKeywordsOutput as w, KeywordsUntrackInput as wt, AppleAdsDisplayStatus as x, KeywordsTrackedRanksOutput as xt, AppleAdsCampaignsInput as y, KeywordsTrackedOutput as yt, AppsTrackedInput as z, ReviewsListOutput as zt };
